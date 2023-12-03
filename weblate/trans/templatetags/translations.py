@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 
 from django import template
 from django.contrib.humanize.templatetags.humanize import intcomma
@@ -67,7 +67,7 @@ GLOSSARY_TEMPLATE = """<span class="glossary-term" title="{}">"""
 
 # This should match whitespace_regex in weblate/static/loader-bootstrap.js
 WHITESPACE_REGEX = (
-    r"(\t|\u00A0|\u1680|\u2000|\u2001|\u2002|\u2003|"
+    r"(\t|\u00A0|\u00AD|\u1680|\u2000|\u2001|\u2002|\u2003|"
     r"\u2004|\u2005|\u2006|\u2007|\u2008|\u2009|\u200A|"
     r"\u202F|\u205F|\u3000)"
 )
@@ -687,6 +687,9 @@ def naturaltime(value, now=None):
     For date and time values shows how many seconds, minutes or hours ago compared to
     current timestamp returns representing string.
     """
+    # float is what time() returns
+    if isinstance(value, float):
+        value = datetime.fromtimestamp(value, tz=timezone.get_current_timezone())
     # datetime is a subclass of date
     if not isinstance(value, date):
         return value
@@ -742,6 +745,18 @@ def words_progress(obj):
         stats.readonly_words,
         stats.approved_words,
         stats.translated_words - stats.translated_checks_words,
+        stats.has_review,
+    )
+
+
+@register.inclusion_tag("snippets/progress.html")
+def chars_progress(obj):
+    stats = get_stats(obj)
+    return translation_progress_data(
+        stats.all_chars,
+        stats.readonly_chars,
+        stats.approved_chars,
+        stats.translated_chars - stats.translated_checks_chars,
         stats.has_review,
     )
 

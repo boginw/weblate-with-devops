@@ -18,7 +18,7 @@ from django.db.models.functions import Replace
 from django.urls import reverse
 from django.utils.functional import cached_property
 from django.utils.timezone import make_aware
-from django.utils.translation import gettext_lazy
+from django.utils.translation import gettext_lazy, gettext_noop
 
 from weblate.configuration.models import Setting
 from weblate.formats.models import FILE_FORMATS
@@ -315,7 +315,10 @@ class Project(models.Model, PathMixin, CacheKeyMixin):
 
     @cached_property
     def locked(self):
-        return self.component_set.filter(locked=False).count() == 0
+        return (
+            self.component_set.filter(locked=False).count() == 0
+            and self.component_set.exists()
+        )
 
     @cached_property
     def languages(self):
@@ -490,6 +493,9 @@ class Project(models.Model, PathMixin, CacheKeyMixin):
     def source_language_cache_key(self):
         return f"project-source-language-ids-{self.pk}"
 
+    def get_glossary_tsv_cache_key(self, source_language, language):
+        return f"project-glossary-tsv-{self.pk}-{source_language.code}-{language.code}"
+
     def invalidate_source_language_cache(self):
         cache.delete(self.source_language_cache_key)
 
@@ -551,6 +557,14 @@ class Project(models.Model, PathMixin, CacheKeyMixin):
     def invalidate_glossary_cache(self):
         if "glossary_automaton" in self.__dict__:
             del self.__dict__["glossary_automaton"]
+        tsv_cache_keys = [
+            self.get_glossary_tsv_cache_key(source_language, language)
+            for source_language in Language.objects.filter(
+                component__project=self
+            ).distinct()
+            for language in self.languages
+        ]
+        cache.delete_many(tsv_cache_keys)
 
     @cached_property
     def glossary_automaton(self):
@@ -566,6 +580,10 @@ class Project(models.Model, PathMixin, CacheKeyMixin):
                     del settings[item]
             else:
                 settings[item] = value
+                # Include project field so that different projects do not share
+                # cache keys via MachineTranslation.get_cache_key when service
+                # is installed at project level.
+                settings[item]["_project"] = self
         return settings
 
     def list_backups(self):
@@ -602,3 +620,10 @@ class Project(models.Model, PathMixin, CacheKeyMixin):
     @property
     def can_add_category(self):
         return True
+
+    @cached_property
+    def automatically_translated_label(self):
+        return self.label_set.get_or_create(
+            name=gettext_noop("Automatically translated"),
+            defaults={"color": "yellow"},
+        )[0]

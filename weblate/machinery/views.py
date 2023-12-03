@@ -53,6 +53,17 @@ class MachineryGlobalMixin(MachineryMixin):
         return self.global_settings_dict
 
 
+class DeprecatedMachinery:
+    is_available = False
+    settings_form = None
+
+    def __init__(self, identifier: str):
+        self.identifier = self.name = identifier
+
+    def get_identifier(self) -> str:
+        return self.identifier
+
+
 class MachineryConfiguration:
     def __init__(
         self,
@@ -71,6 +82,10 @@ class MachineryConfiguration:
     @property
     def is_enabled(self):
         return self.configuration is not None
+
+    @property
+    def is_available(self):
+        return self.machinery.is_available
 
     @property
     def id(self):
@@ -122,8 +137,16 @@ class ListMachineryView(TemplateView):
 
     def get_configured_services(self):
         for service, configuration in self.settings_dict.items():
-            machinery = MACHINERY[service]
-            yield MachineryConfiguration(machinery, configuration, project=self.project)
+            try:
+                machinery = MACHINERY[service]
+            except KeyError:
+                yield MachineryConfiguration(
+                    DeprecatedMachinery(service), configuration, project=self.project
+                )
+            else:
+                yield MachineryConfiguration(
+                    machinery, configuration, project=self.project
+                )
 
     def get_context_data(self, **kwargs):
         result = super().get_context_data(**kwargs)
@@ -146,10 +169,16 @@ class ListMachineryProjectView(MachineryProjectMixin, ListMachineryView):
         for service, configuration in self.global_settings_dict.items():
             if service in project_settings:
                 continue
-            machinery = MACHINERY[service]
-            yield MachineryConfiguration(
-                machinery, configuration, sitewide=True, project=self.project
-            )
+            try:
+                machinery = MACHINERY[service]
+            except KeyError:
+                yield MachineryConfiguration(
+                    DeprecatedMachinery(service), configuration, project=self.project
+                )
+            else:
+                yield MachineryConfiguration(
+                    machinery, configuration, sitewide=True, project=self.project
+                )
 
     def dispatch(self, request, *args, **kwargs):
         if not request.user.has_perm("project.edit", self.project):
@@ -171,7 +200,7 @@ class EditMachineryView(FormView):
         try:
             self.machinery = MACHINERY[self.machinery_id]
         except KeyError:
-            raise Http404("Invalid service specified")
+            self.machinery = DeprecatedMachinery(self.machinery_id)
         self.project = None
         self.post_setup(request, kwargs)
 
@@ -226,16 +255,24 @@ class EditMachineryView(FormView):
             self.delete_service()
             return HttpResponseRedirect(self.get_success_url())
 
+        if not self.machinery.is_available:
+            raise Http404("Invalid service specified")
+
         if "enable" in request.POST:
             self.delete_service()
             return HttpResponseRedirect(self.get_success_url())
 
         if "install" in request.POST:
             if self.machinery.settings_form is not None:
-                return self.get(request, *args, **kwargs)
+                return HttpResponseRedirect(request.path)
             self.install_service()
             return HttpResponseRedirect(self.get_success_url())
         return super().post(request, *args, **kwargs)
+
+    def get(self, request, *args, **kwargs):
+        if not self.machinery.is_available:
+            raise Http404("Invalid service specified")
+        return super().get(request, *args, **kwargs)
 
 
 class EditMachineryGlobalView(MachineryGlobalMixin, EditMachineryView):

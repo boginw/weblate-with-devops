@@ -874,7 +874,7 @@ class AutoForm(forms.Form):
         initial="others",
     )
     component = forms.ChoiceField(
-        label=gettext_lazy("Components"),
+        label=gettext_lazy("Component"),
         required=False,
         help_text=gettext_lazy(
             "Turn on contribution to shared translation memory for the project to "
@@ -994,6 +994,12 @@ class AutoForm(forms.Form):
                     raise ValidationError(gettext("Component not found!"))
             else:
                 raise ValidationError(gettext("Please provide valid component slug!"))
+        if result.source_language != self.obj.source_language:
+            raise ValidationError(
+                gettext(
+                    "Source component needs to have same source language as target one."
+                )
+            )
         return result.pk
 
 
@@ -1711,6 +1717,7 @@ class ComponentBranchForm(ComponentSelectForm):
         # We need a object, not integer here
         kwargs["source_language"] = component.source_language
         kwargs["project"] = component.project
+        kwargs["category"] = component.category
         for field in form_fields:
             kwargs[field] = data[field]
         self.instance = Component(**kwargs)

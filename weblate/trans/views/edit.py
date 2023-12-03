@@ -206,7 +206,7 @@ def get_other_units(unit):
 
 def cleanup_session(session, delete_all: bool = False):
     """Delete old search results from session storage."""
-    now = int(time.monotonic())
+    now = int(time.time())
     keys = list(session.keys())
     for key in keys:
         if not key.startswith("search_"):
@@ -220,7 +220,7 @@ def search(
     base, project, unit_set, request, blank: bool = False, use_cache: bool = True
 ):
     """Perform search or returns cached search results."""
-    now = int(time.monotonic())
+    now = int(time.time())
     # Possible new search
     form = PositionSearchForm(user=request.user, data=request.GET, show_builder=False)
 
@@ -266,7 +266,7 @@ def search(
         # Check empty search results
         if not unit_ids and not blank:
             messages.warning(request, gettext("No strings found!"))
-            return redirect(base)
+            return redirect(f"{base.get_absolute_url()}#search")
 
         store_result = {
             "query": search_query,

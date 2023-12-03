@@ -39,7 +39,7 @@ from weblate.trans.models.suggestion import Suggestion
 from weblate.trans.models.unit import Unit
 from weblate.trans.models.variant import Variant
 from weblate.trans.signals import component_post_update, store_post_load, vcs_pre_commit
-from weblate.trans.util import join_plural, split_plural
+from weblate.trans.util import is_plural, join_plural, split_plural
 from weblate.trans.validators import validate_check_flags
 from weblate.utils.errors import report_error
 from weblate.utils.render import render_template
@@ -570,8 +570,6 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
         - signals and alerts are updated by the caller
         - repository push is handled by the caller
         """
-        self.log_info("committing pending changes (%s)", reason)
-
         try:
             store = self.store
         except FileParseError as error:
@@ -595,6 +593,8 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
             .prefetch_recent_content_changes()
             .select_for_update()
         )
+
+        self.log_info("committing %d pending changes (%s)", len(units), reason)
 
         for unit in units:
             # We reuse the queryset, so pending units might reappear here
@@ -742,6 +742,8 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                     report_error(
                         cause="Could not update unit", project=self.component.project
                     )
+                    # TODO: once we have a deeper stack of pending changes,
+                    # this should be kept as pending, so that the changes are not lost
                     unit.state = STATE_FUZZY
                     # Use update instead of hitting expensive save()
                     Unit.objects.filter(pk=unit.pk).update(state=STATE_FUZZY)
@@ -1368,9 +1370,13 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
     ):
         if isinstance(source, list):
             source = join_plural(source)
+
         user = request.user if request else None
         component = self.component
         add_terminology = False
+        if is_plural(source) and not component.file_format_cls.supports_plural:
+            raise ValueError("Plurals not supported by format!")
+
         if self.is_source:
             translations = (
                 self,
@@ -1610,9 +1616,14 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
         explanation: str = "",
         state: int | None = None,
     ):
+        component = self.component
         extra = {}
         if isinstance(source, str):
             source = [source]
+        if len(source) > 1 and not component.file_format_cls.supports_plural:
+            raise ValidationError(
+                gettext("Plurals are not supported by the file format!")
+            )
         for text in chain(source, [context]):
             if any(char in text for char in CONTROLCHARS):
                 raise ValidationError(
@@ -1632,15 +1643,15 @@ class Translation(models.Model, URLMixin, LoggerMixin, CacheKeyMixin):
                     )
                 )
         if context:
-            self.component.file_format_cls.validate_context(context)
-        if not self.component.has_template():
+            component.file_format_cls.validate_context(context)
+        if not component.has_template():
             extra["source"] = join_plural(source)
         if not auto_context and self.unit_set.filter(context=context, **extra).exists():
             raise ValidationError(gettext("This string seems to already exist."))
         # Avoid using source translations without a filename
         if not self.filename:
             try:
-                translation = self.component.translation_set.exclude(pk=self.pk)[0]
+                translation = component.translation_set.exclude(pk=self.pk)[0]
             except IndexError:
                 raise ValidationError(
                     gettext("Failed adding string, no translation found.")

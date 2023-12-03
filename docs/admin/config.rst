@@ -1319,6 +1319,10 @@ PRIVATE_COMMIT_EMAIL_OPT_IN
 
 Configures whether the private commit e-mail is opt-in or opt-out (by default it is opt-in).
 
+.. hint::
+
+   This setting only applies to users which have not explicitly chosen a commit e-mail.
+
 .. seealso::
 
    :ref:`profile`,
@@ -1624,7 +1628,7 @@ Sentry DSN to use for :ref:`collecting-errors`.
 SENTRY_ENVIRONMENT
 ------------------
 
-Configurures environment for Sentry. Defaults to ``devel``.
+Configures environment for Sentry. Defaults to ``devel``.
 
 .. setting:: SENTRY_PROFILES_SAMPLE_RATE
 

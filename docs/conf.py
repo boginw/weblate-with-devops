@@ -59,7 +59,7 @@ copyright = "Michal Čihař"
 author = "Michal Čihař"
 
 # The full version, including alpha/beta/rc tags
-release = "5.2"
+release = "5.3"
 
 
 # -- General configuration ---------------------------------------------------
@@ -325,6 +325,9 @@ linkcheck_ignore = [
     "https://yandex.com/dev/translate/",
     # TODO: Expired SSL certificate
     "https://docs.oasis-open.org/",
+    # 403
+    "https://platform.openai.com/account/api-keys",
+    "https://platform.openai.com/docs/models",
 ]
 
 # HTTP docs
